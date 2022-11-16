@@ -38,7 +38,7 @@ jobs:
       - name: Upload Test Coverage
         uses: codecov/codecov-action@v3
         with:
-            files: ./build/test/coverage.out
+          files: ./build/test/coverage.out
 
   component-test:
     name: Component Tests
@@ -106,12 +106,37 @@ jobs:
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@${{ env.NFPM_VERSION }}
           make clean local-apk-package local-deb-package local-rpm-package local-txz-package
           tar -cf ./build/snapshots.tar.gz ./build/*.deb ./build/*.rpm ./build/*.pkg ./build/*.apk
+      - name: Store Artifacts in Cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/build
+          key: nginx-agent-${{ github.run_id }}-${{ github.run_number }}
+    
+  github-upload:
+    runs-on: ubuntu-22.04
+    needs: [ lint, unit-test, component-test, performance-test, build-snapshot ]
+    steps:
+      - name: Fetch Cached Artifacts
+        uses: actions/cache@v3
+        with:
+          path: ./build/snapshots.tar.gz
+          key: nginx-agent-${{ github.run_id }}-${{ github.run_number }}
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: snapshots
-          path: build/**/*.tar.gz
+          path: ./build/snapshots.tar.gz
           retention-days: 3
+  
+  azure-upload:
+    runs-on: ubuntu-22.04
+    needs: [ lint, unit-test, component-test, performance-test, build-snapshot ]
+    steps:
+      - name: Fetch Cached Artifacts
+        uses: actions/cache@v3
+        with:
+          path: ./build/snapshots.tar.gz
+          key: nginx-agent-${{ github.run_id }}-${{ github.run_number }}
       - name: Azure Login
         uses: azure/login@v1
         with:
