@@ -116,10 +116,13 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [ lint, unit-test, component-test, performance-test, build-snapshot ]
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Fetch Cached Artifacts
         uses: actions/cache@v3
         with:
-          path: ./build/snapshots.tar.gz
+          path: ${{ github.workspace }}/build/snapshots.tar.gz
           key: nginx-agent-${{ github.run_id }}-${{ github.run_number }}
       - name: Upload Artifacts
         uses: actions/upload-artifact@v3
@@ -132,10 +135,13 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [ lint, unit-test, component-test, performance-test, build-snapshot ]
     steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       - name: Fetch Cached Artifacts
         uses: actions/cache@v3
         with:
-          path: ./build/snapshots.tar.gz
+          path: ${{ github.workspace }}/build/snapshots.tar.gz
           key: nginx-agent-${{ github.run_id }}-${{ github.run_number }}
       - name: Azure Login
         uses: azure/login@v1
@@ -145,7 +151,7 @@ jobs:
         uses: azure/CLI@v1
         with:
           inlineScript: |
-            az storage blob upload --auth-mode=key -f ./build/snapshots.tar.gz -c ${{ secrets.AZURE_CONTAINER_NAME }} \
+            az storage blob upload --auth-mode=login -f ./build/snapshots.tar.gz -c ${{ secrets.AZURE_CONTAINER_NAME }} \
               --account-name ${{ secrets.AZURE_ACCOUNT_NAME }} -n nginx-agent/${GITHUB_REF##*/}/nginx-agent-snapshot.tar.gz
       - name: Azure Logout
         run: |
