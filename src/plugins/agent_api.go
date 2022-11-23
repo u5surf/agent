@@ -181,7 +181,11 @@ func (h *NginxHandler) getNginxDetails() []*proto.NginxDetails {
 func (h *NginxHandler) updateConfig(w http.ResponseWriter, r *http.Request) error {
 	log.Info("Updating config")
 
-	r.ParseMultipartForm(32 << 20)
+	err := r.ParseMultipartForm(32 << 20)
+	if err != nil {
+		return fmt.Errorf("can't parse form data: %v", err)
+	}
+
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
 		return fmt.Errorf("can't read form file: %v", err)

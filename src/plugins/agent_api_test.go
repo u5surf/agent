@@ -115,8 +115,10 @@ func TestNginxHandler_updateConfig(t *testing.T) {
 			writer := multipart.NewWriter(body)
 			part, err := writer.CreateFormFile("file", filepath.Base(file.Name()))
 			require.NoError(t, err)
-			io.Copy(part, file)
 			writer.Close()
+
+			_, err = io.Copy(part, file)
+			require.NoError(t, err)
 
 			r := httptest.NewRequest(http.MethodPut, path, body)
 			r.Header.Set("Content-Type", writer.FormDataContentType())
