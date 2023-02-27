@@ -9,6 +9,7 @@ package sources
 
 import (
 	"context"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -42,7 +43,30 @@ type ContainerCPU struct {
 
 func NewContainerCPUSource(namespace string, basePath string) *ContainerCPU {
 	log.Trace("Creating new container CPU source")
-	return &ContainerCPU{basePath, cgroup.IsCgroupV2(basePath), &namedMetric{namespace, CpuGroup}}
+	isCgroupV2 := cgroup.IsCgroupV2(basePath)
+
+	if isCgroupV2 {
+		verifyFileIsReadable(path.Join(basePath, cgroup.V2CpuMaxFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V2CpuWeightFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V2CpusetCpusFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V2CpuStatFile), namespace)
+	} else {
+		verifyFileIsReadable(path.Join(basePath, cgroup.V1CpuPeriodFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V1CpuSharesFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V1CpuQuotaFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V1CpusetCpusFile), namespace)
+		verifyFileIsReadable(path.Join(basePath, cgroup.V1CpuStatFile), namespace)
+	}
+
+	return &ContainerCPU{basePath, isCgroupV2, &namedMetric{namespace, CpuGroup}}
+}
+
+func verifyFileIsReadable(path string, namespace string) {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Warnf(ContainerCpuMetricsWarning, namespace, CpuGroup, err)
+	}
+	f.Close()
 }
 
 func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<- *proto.StatsEntity) {
@@ -54,21 +78,21 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 	if c.isCgroupV2 {
 		cpuMax, err := cgroup.ReadSingleValueCgroupFile(path.Join(c.basePath, cgroup.V2CpuMaxFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 		cpu := strings.Split(cpuMax, " ")
 
 		cpuPeriod, err := strconv.ParseFloat(cpu[1], 64)
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
 		var cpuQuota, cpuCores float64
 
 		// If the cpu quota value is set to max then it will be set to the -1 and the number of
-		// cpu cores avaliable to the container is that same as the number of cpu cores
+		// cpu cores available to the container is that same as the number of cpu cores
 		// of the host system
 		if cpu[0] == cgroup.V2DefaultMaxValue {
 			cpuQuota = -1
@@ -76,7 +100,7 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 		} else {
 			cpuQuota, err = strconv.ParseFloat(cpu[0], 64)
 			if err != nil {
-				log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+				log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 				return
 			}
 
@@ -85,7 +109,7 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 
 		cpuWeight, err := cgroup.ReadIntegerValueCgroupFile(path.Join(c.basePath, cgroup.V2CpuWeightFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
@@ -95,7 +119,7 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 
 		setCores, err := getCPUSetCores(path.Join(c.basePath, cgroup.V2CpusetCpusFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
@@ -110,7 +134,7 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 			cgroup.V2ThrottlingPeriodsKey,
 		)
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
@@ -126,25 +150,25 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 	} else {
 		cpuPeriodString, err := cgroup.ReadSingleValueCgroupFile(path.Join(c.basePath, cgroup.V1CpuPeriodFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
 		cpuPeriod, err := strconv.ParseFloat(cpuPeriodString, 64)
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
 		cpuQuotaString, err := cgroup.ReadSingleValueCgroupFile(path.Join(c.basePath, cgroup.V1CpuQuotaFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
 		cpuQuota, err := strconv.ParseFloat(cpuQuotaString, 64)
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
@@ -161,13 +185,13 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 
 		cpuShares, err := cgroup.ReadIntegerValueCgroupFile(path.Join(c.basePath, cgroup.V1CpuSharesFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
 		setCores, err := getCPUSetCores(path.Join(c.basePath, cgroup.V1CpusetCpusFile))
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
@@ -182,7 +206,7 @@ func (c *ContainerCPU) Collect(ctx context.Context, wg *sync.WaitGroup, m chan<-
 			cgroup.V1ThrottlingPeriodsKey,
 		)
 		if err != nil {
-			log.Warnf(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
+			log.Tracef(ContainerCpuMetricsWarning, c.namedMetric.namespace, c.namedMetric.group, err)
 			return
 		}
 
